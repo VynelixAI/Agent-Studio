@@ -1,0 +1,47 @@
+{
+  "name": "vynelixai-agent-studio",
+  "license": "Apache-2.0",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agent Studio by VynelixAI — desktop workspace for data engineering & AI agent workflows",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "npm run dev --prefix server",
+    "build": "tsc --noEmit && vite build",
+    "build:desktop": "node scripts/prepare-desktop-resources.mjs && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "validate:catalog": "node --import tsx scripts/validateStudioCatalog.ts",
+    "test:stage": "npm run test --prefix server && npm run test:stage-py --prefix server",
+    "test:domains:emit": "npx tsx testing/scripts/emit_codegen.ts",
+    "test:domains": "npm run test:domains:emit && python3 testing/run_all.py",
+    "mongo:up": "docker compose up -d mongo",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@tauri-apps/api": "^2.11.1",
+    "@xyflow/react": "^12.6.0",
+    "clsx": "^2.1.1",
+    "dexie": "^4.0.11",
+    "js-yaml": "^4.1.0",
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.7",
+    "@tauri-apps/cli": "^2.5.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.5",
+    "@vitejs/plugin-react": "^4.4.1",
+    "tailwindcss": "^4.1.7",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  }
+}
