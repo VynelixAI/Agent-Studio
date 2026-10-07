@@ -1,0 +1,37 @@
+# Agent Studio desktop configuration
+# ----------------------------------
+# Created on first launch (and mirrored on Save in the setup wizard).
+#
+# Primary editable locations:
+#   Windows:  %ProgramData%\AgentStudio\agent-studio.yaml
+#             (+ %ProgramFiles%\AgentStudio\ when the all-users installer can write)
+#   macOS:    ~/Library/Application Support/AgentStudio/agent-studio.yaml
+#   Linux:    ~/.config/AgentStudio/agent-studio.yaml
+#
+# Workspace data (runs / plugins) defaults to:
+#   ~/AgentStudio   (Windows: %USERPROFILE%\AgentStudio)
+#
+# Change values below and restart Agent Studio to apply.
+# Mongo modes: local | atlas | iaas
+
+workspace:
+  # Absolute path for runs, plugins, and local data.
+  path: ""
+
+backend:
+  host: 127.0.0.1
+  port: 8787
+  api_url: http://127.0.0.1:8787
+
+database:
+  # local = Mongo on this machine · atlas = MongoDB Atlas · iaas = remote/self-hosted
+  mode: local
+  name: vynelix_agent_studio
+  uri: mongodb://127.0.0.1:27017
+
+connectors:
+  mongodb_default_database: vynelix_agent_studio
+  notes: "Update database.mode / database.uri here if MongoDB moves."
+
+# Set true after first-run setup completes
+setup_complete: false

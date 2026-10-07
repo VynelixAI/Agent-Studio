@@ -1,0 +1,438 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+  Palette mirrored from https://www.vynelixai.com/ (:root + .dark tokens).
+  navy-* = surfaces · ink-* = text · cyan-* = brand accent
+*/
+@theme {
+  --color-navy-950: var(--surface-950);
+  --color-navy-900: var(--surface-900);
+  --color-navy-800: var(--surface-800);
+  --color-navy-700: var(--surface-700);
+  --color-navy-600: var(--surface-600);
+  --color-navy-500: var(--surface-500);
+  --color-cyan-200: var(--accent-soft);
+  --color-cyan-300: var(--accent-readable);
+  --color-cyan-400: var(--accent-bright);
+  --color-cyan-500: var(--brand-accent);
+  --color-cyan-600: var(--brand-accent-strong);
+  --color-ink-100: var(--text-100);
+  --color-ink-200: var(--text-200);
+  --color-ink-300: var(--text-300);
+  --color-ink-400: var(--text-400);
+  --color-ink-500: var(--text-500);
+  --color-danger: var(--destructive);
+  --color-warn: var(--warning);
+  --color-ok: var(--success);
+  --font-sans:
+    -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Fira Sans",
+    Ubuntu, Oxygen, "Oxygen Sans", Cantarell, "Droid Sans", "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Lucida Grande", Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+}
+
+/* Light — genveth.com surfaces: navy #0a1f36, teal #0d9488, page #f7fafc */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #061018;
+  --surface: #ffffff;
+  --surface-elevated: #ffffff;
+  --border: #c5d2e0;
+  --muted: #1a3348;
+  --brand-primary: #0a1f36;
+  --brand-primary-foreground: #f7fafc;
+  --brand-secondary: #0d9488;
+  --brand-accent: #0d9488;
+  --brand-accent-strong: #0f766e;
+  --accent-soft: #f0fdfa;
+  --accent-readable: #0f766e;
+  --accent-bright: #0d9488;
+  --brand-accent-foreground: #f7fafc;
+  --success: #0f766e;
+  --destructive: #be123c;
+  --warning: #b45309;
+
+  --surface-950: #ffffff;
+  --surface-900: #ffffff;
+  --surface-800: #f4f8fb;
+  --surface-700: #e3ebf3;
+  --surface-600: #c5d2e0;
+  --surface-500: #6d8296;
+  --text-100: #061018;
+  --text-200: #0a1f36;
+  --text-300: #10283f;
+  --text-400: #1a3348;
+  --text-500: #243e56;
+  --scroll-thumb: #d8e0ea;
+  --rf-control-bg: #ffffff;
+  --rf-control-border: #d8e0ea;
+  --rf-control-fill: #0a1f36;
+  --rf-control-hover: #f7fafc;
+  --rf-minimap-bg: #ffffff;
+  --rf-dots: #d8e0ea;
+  --rf-mask: rgba(247, 250, 252, 0.82);
+  --node-shadow: 0 8px 24px rgba(10, 31, 54, 0.08);
+  --btn-primary-fg: #f7fafc;
+  --btn-accent-fg: #ffffff;
+  --glass-bg: #ffffff;
+  --glass-border: #d8e0ea;
+  --gradient-mesh: none;
+}
+
+/* Dark — warm darkroom ink. Not cool navy, not charcoal, not a green wash.
+   Teal stays on buttons and edges. Type stays white. */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #16110e;
+  --foreground: #ffffff;
+  --surface: #241c17;
+  --surface-elevated: #31261f;
+  --border: #5c4638;
+  --muted: #fff6ee;
+  --brand-primary: #2a211b;
+  --brand-primary-foreground: #ffffff;
+  --brand-secondary: #0d9488;
+  --brand-accent: #14b8a6;
+  --brand-accent-strong: #0d9488;
+  --accent-soft: #3a2c24;
+  --accent-readable: #ffffff;
+  --accent-bright: #ffffff;
+  --brand-accent-foreground: #ffffff;
+  --success: #5eead4;
+  --destructive: #fb7185;
+  --warning: #fbbf24;
+
+  --surface-950: #120e0b;
+  --surface-900: #1e1713;
+  --surface-800: #2c221c;
+  --surface-700: #3d2e26;
+  --surface-600: #5c4638;
+  --surface-500: #8a7264;
+  --text-100: #ffffff;
+  --text-200: #fffaf5;
+  --text-300: #fff4ea;
+  --text-400: #ffeede;
+  --text-500: #ffe4cf;
+  --scroll-thumb: #5c4638;
+  --rf-control-bg: #2c221c;
+  --rf-control-border: #5c4638;
+  --rf-control-fill: #ffffff;
+  --rf-control-hover: #3d2e26;
+  --rf-minimap-bg: #1e1713;
+  --rf-dots: #4a382c;
+  --rf-mask: rgba(22, 17, 14, 0.72);
+  --node-shadow: 0 10px 28px rgba(8, 5, 3, 0.45);
+  --btn-primary-fg: #ffffff;
+  --btn-accent-fg: #ffffff;
+  --glass-bg: rgba(36, 28, 23, 0.88);
+  --glass-border: rgba(255, 228, 207, 0.18);
+  --gradient-mesh:
+    radial-gradient(
+      38% 42% at 0% 0%,
+      color-mix(in srgb, #c4a484 16%, transparent) 0%,
+      transparent 62%
+    ),
+    radial-gradient(
+      32% 36% at 100% 0%,
+      color-mix(in srgb, #0d9488 10%, transparent) 0%,
+      transparent 58%
+    ),
+    linear-gradient(180deg, #1c1612 0%, #120e0b 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+[data-theme="dark"] body,
+[data-theme="dark"] #root {
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+  color: #ffffff;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select,
+[data-theme="dark"] option {
+  color: #ffffff;
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder {
+  color: #ffffff;
+  opacity: 0.9;
+}
+
+body {
+  background-color: var(--background);
+  background-image: var(--gradient-mesh);
+  background-attachment: fixed;
+}
+
+[data-theme="light"] body,
+[data-theme="light"] #root {
+  background-color: #ffffff;
+  background-image: none;
+  color: #061018;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: 0;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-100);
+}
+
+button,
+[role="button"] {
+  font-weight: 650;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand-secondary) 72%, white);
+  outline-offset: 2px;
+}
+
+button:not(:disabled) {
+  transition:
+    color 0.16s ease,
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.12s ease,
+    filter 0.16s ease;
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px) scale(0.985);
+}
+
+/* High-contrast reusable interactive treatments */
+.ui-tab {
+  min-height: 1.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.55rem;
+  color: var(--text-300);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.ui-tab:hover {
+  border-color: var(--surface-600);
+  background: var(--surface-800);
+  color: var(--text-100);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.ui-tab-active {
+  border-color: color-mix(in srgb, var(--brand-secondary) 38%, transparent);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--brand-secondary) 16%, var(--surface-elevated)),
+    color-mix(in srgb, var(--brand-accent) 18%, var(--surface-elevated))
+  );
+  color: var(--brand-accent-strong);
+  box-shadow:
+    inset 0 -2px 0 var(--brand-accent),
+    0 2px 10px rgba(15, 23, 42, 0.1);
+}
+
+.btn-accent {
+  border: 1px solid transparent;
+  background: var(--brand-accent);
+  color: var(--btn-accent-fg, #082f33);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.btn-accent:hover {
+  border-color: transparent;
+  background: var(--brand-accent-strong);
+  color: var(--btn-accent-fg, #082f33);
+  box-shadow: none;
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+[data-theme="dark"] .ui-tab-active {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-accent {
+  background: #0d9488;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-accent:hover {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.react-flow {
+  background: var(--background) !important;
+}
+.react-flow__background {
+  background: var(--background) !important;
+}
+
+.react-flow__controls-button {
+  background: var(--rf-control-bg) !important;
+  border-bottom: 1px solid var(--rf-control-border) !important;
+  fill: var(--rf-control-fill) !important;
+}
+.react-flow__controls-button:hover {
+  background: var(--rf-control-hover) !important;
+}
+.react-flow__minimap {
+  background: var(--rf-minimap-bg) !important;
+}
+.react-flow__edge-path {
+  stroke: var(--brand-accent) !important;
+  stroke-width: 1.5;
+}
+.react-flow__attribution {
+  display: none;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.25s ease-out both;
+}
+
+.btn-primary {
+  background: var(--brand-primary);
+  color: var(--btn-primary-fg);
+  font-weight: 600;
+  border-radius: 0.5rem;
+  border: 0;
+  transition:
+    filter 0.15s,
+    transform 0.15s,
+    background-color 0.15s;
+}
+.btn-primary:hover {
+  background: #143352;
+  filter: none;
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+[data-theme="dark"] .btn-primary {
+  background: #0d9488;
+  color: #ffffff;
+}
+[data-theme="dark"] .btn-primary:hover {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+/* Databricks-like markdown preview inside notebook cells */
+.nb-md h1 {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 1.35rem;
+  font-weight: 650;
+  color: var(--text-100);
+}
+.nb-md h2 {
+  margin: 0.25rem 0 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-100);
+}
+.nb-md h3 {
+  margin: 0.2rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-100);
+}
+.nb-md p,
+.nb-md li {
+  margin: 0.2rem 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-300);
+}
+.nb-md code {
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--surface-700) 80%, transparent);
+  padding: 0.05rem 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  color: var(--brand-accent, #22d3ee);
+}
+.nb-md-code {
+  margin: 0.5rem 0;
+  overflow: auto;
+  border-radius: 0.4rem;
+  background: var(--surface-950);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.75rem;
+}
+.nb-md strong {
+  color: var(--text-100);
+}
+
