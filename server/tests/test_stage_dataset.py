@@ -1,14 +1,8 @@
-"""
-Unit tests for stage_dataset.py (columnar materialize + optional limit + spill).
-Run from a materialized run dir or after extracting the module:
+"""Unit tests for the generated stage_dataset Python module.
 
-  cd server && python -c "
-  from pathlib import Path
-  import importlib.util, sys, tempfile, textwrap
-  ..."
-
-Or: copy buildStageDatasetPy output to /tmp/stage_dataset.py and:
-  PYTHONPATH=/tmp pytest server/tests/test_stage_dataset.py -q
+Run ``npm run test:stage-py --prefix server`` from the repository root. The
+command generates the Python test fixture from the TypeScript code generator
+before running this suite.
 """
 from __future__ import annotations
 
@@ -21,36 +15,18 @@ from pathlib import Path
 
 
 def _load_stage_dataset_module():
-    """Load generated Python from the TypeScript source exporter via a sibling file if present,
-    otherwise synthesize from the repo by writing the expected module path used in tests."""
-    # Prefer already-generated file next to this test when materialize was run
-    candidates = [
-        Path(__file__).resolve().parents[1] / "src" / "codegen" / "_stage_dataset_fixture.py",
-        Path(__file__).resolve().parent / "stage_dataset_under_test.py",
-    ]
-    for c in candidates:
-        if c.exists():
-            spec = importlib.util.spec_from_file_location("stage_dataset", c)
-            assert spec and spec.loader
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod
-
-    # Generate by shelling out to node to print the module (dev convenience)
-    root = Path(__file__).resolve().parents[2]
-    script = root / "server" / "scripts" / "emit_stage_dataset.py"
-    # Fallback: read from a run's code if any
-    runs = root / "data" / "runs"
-    if runs.exists():
-        for p in runs.rglob("stage_dataset.py"):
-            spec = importlib.util.spec_from_file_location("stage_dataset", p)
-            assert spec and spec.loader
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod
+    """Load the test fixture emitted by the server's TypeScript code generator."""
+    fixture = Path(__file__).resolve().parent / "stage_dataset_under_test.py"
+    if fixture.exists():
+        spec = importlib.util.spec_from_file_location("stage_dataset", fixture)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
     raise unittest.SkipTest(
-        "stage_dataset.py not found — run server tests after `node scripts/emit-stage-dataset.mjs`",
+        "Generated stage_dataset fixture is missing; run "
+        "`npm run test:stage-py --prefix server` from the repository root."
     )
 
 

@@ -37,8 +37,9 @@ export async function registerSecurity(app: FastifyInstance) {
     const principal = authenticateApiKey(keyHeader);
 
     if (config.authRequired || hasConfiguredKeys()) {
-      // If keys configured OR auth required, enforce on protected routes
-      if (config.authRequired && !principal) {
+      // Once keys are configured, reject invalid/missing credentials even if a
+      // developer has accidentally left AUTH_REQUIRED=false. Never fall back to admin.
+      if (!principal) {
         await writeAudit({
           actor: "anonymous",
           action: "auth.denied",
@@ -54,16 +55,16 @@ export async function registerSecurity(app: FastifyInstance) {
           frameworks: ["NIST-CSF", "DPDP-IN", "SOC2-CC"],
         });
       }
-      if (principal) {
-        req.principal = principal;
-      } else if (config.authRequired) {
-        return reply.code(401).send({ error: "Unauthorized", code: "AUTH_REQUIRED" });
-      }
+      req.principal = principal;
     }
 
-    // When auth not required and no key, treat as local-dev operator
+    // Unauthenticated access is allowed only for explicitly local development/desktop mode.
+    // Network binding without authentication is rejected by startup configuration validation.
     if (!req.principal) {
-      req.principal = { keyId: "local-dev", role: "admin" };
+      req.principal = {
+        keyId: config.desktopApp ? "local-desktop" : "local-dev",
+        role: config.desktopApp || config.nodeEnv !== "production" ? "admin" : "viewer",
+      };
     }
   });
 }

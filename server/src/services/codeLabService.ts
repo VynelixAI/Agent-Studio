@@ -1,6 +1,6 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { nanoid } from "nanoid";
 import { buildPythonRunner } from "../codegen/pythonRunner.js";
 import { buildStageDatasetPy } from "../codegen/stageDatasetPy.js";
@@ -10,6 +10,8 @@ import { config } from "../config.js";
 import { decryptSecret } from "../crypto.js";
 import { secrets, workspaces } from "../db.js";
 import type { WorkspaceDocument } from "../types.js";
+import { assertSafeIdentifier, assertSafeSecretRef, assertWorkspaceDocument } from "../security/identifiers.js";
+import { resolvePythonExecutable, runProcess } from "./processRunner.js";
 
 export type CodeMode = "python" | "notebook";
 
@@ -19,38 +21,20 @@ export interface NotebookCell {
   source: string;
 }
 
-function runPython(
+async function runPython(
   scriptPath: string,
   cwd: string,
-  timeoutMs = 60_000,
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    const child = spawn("python3", [scriptPath], {
-      cwd,
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve({ code: 124, stdout, stderr: stderr + "\n[timeout]" });
-    }, timeoutMs);
-    child.stdout?.on("data", (c: Buffer) => {
-      stdout += c.toString("utf8");
-    });
-    child.stderr?.on("data", (c: Buffer) => {
-      stderr += c.toString("utf8");
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr });
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ code: 1, stdout, stderr: err.message });
-    });
+  const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+  const python = await resolvePythonExecutable(serverRoot);
+  const result = await runProcess(python, [scriptPath], {
+    cwd,
+    env: { PYTHONUNBUFFERED: "1" },
+    timeoutMs: 60_000,
+    maxStdoutChars: 1_000_000,
+    maxStderrChars: 64_000,
   });
+  return { code: result.code, stdout: result.stdout, stderr: result.stderr };
 }
 
 function cellsToNotebookJson(cells: NotebookCell[]): string {
@@ -108,7 +92,8 @@ export async function executeAuthoredCode(input: {
   stderr: string;
   exitCode: number | null;
 }> {
-  const ws = await workspaces().findOne({ workspaceId: input.workspaceId });
+  const workspaceId = assertSafeIdentifier(input.workspaceId, "workspace id");
+  const ws = await workspaces().findOne({ workspaceId });
   const document =
     (input.document as WorkspaceDocument | undefined) ??
     (ws?.document as WorkspaceDocument | undefined);
@@ -120,25 +105,37 @@ export async function executeAuthoredCode(input: {
       { statusCode: 404 },
     );
   }
+  assertWorkspaceDocument(document);
 
   const runId = `code_${nanoid(10)}`;
-  const root = path.join(config.runsRoot, input.workspaceId, runId);
+  const runsRoot = path.resolve(config.runsRoot);
+  const root = path.resolve(runsRoot, workspaceId, runId);
+  const relativeRoot = path.relative(runsRoot, root);
+  if (!relativeRoot || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot)) {
+    throw Object.assign(new Error("Code-lab run path escaped the runs root"), { statusCode: 400 });
+  }
   const codeDir = path.join(root, "code");
   const logsDir = path.join(root, "logs");
-  await fs.mkdir(codeDir, { recursive: true });
-  await fs.mkdir(logsDir, { recursive: true });
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  await fs.chmod(root, 0o700).catch(() => undefined);
+  await fs.mkdir(codeDir, { recursive: true, mode: 0o700 });
+  await fs.mkdir(logsDir, { recursive: true, mode: 0o700 });
+  await fs.chmod(codeDir, 0o700).catch(() => undefined);
+  await fs.chmod(logsDir, 0o700).catch(() => undefined);
 
   const logPath = path.join(logsDir, "run.log");
   const stamp = (line: string) =>
     fs.appendFile(logPath, `[${new Date().toISOString()}] ${line}\n`, "utf8");
 
-  await fs.writeFile(logPath, "", "utf8");
-  await stamp(`CODE_RUN_START mode=${input.mode} workspace=${input.workspaceId}`);
+  await fs.chmod(codeDir, 0o700).catch(() => undefined);
+  await fs.writeFile(logPath, "", { encoding: "utf8", mode: 0o600 });
+  await fs.chmod(logPath, 0o600).catch(() => undefined);
+  await stamp(`CODE_RUN_START mode=${input.mode} workspace=${workspaceId}`);
 
   // Materialize connectors + secrets (DB + ephemeral overlay)
-  const secretMap: Record<string, string> = {};
+  const secretMap = Object.create(null) as Record<string, string>;
   if (ws) {
-    const secretRows = await secrets().find({ workspaceId: input.workspaceId }).toArray();
+    const secretRows = await secrets().find({ workspaceId }).toArray();
     for (const row of secretRows) {
       secretMap[row.secretRef] = decryptSecret({
         ciphertext: row.ciphertext,
@@ -148,7 +145,9 @@ export async function executeAuthoredCode(input: {
     }
   }
   for (const s of input.secrets ?? []) {
-    if (s.secretRef && s.value) secretMap[s.secretRef] = s.value;
+    if (s.secretRef && s.value) {
+      secretMap[assertSafeSecretRef(s.secretRef)] = s.value;
+    }
   }
   const tasks = buildTasksFile({
     document,
@@ -169,17 +168,20 @@ export async function executeAuthoredCode(input: {
   await fs.writeFile(
     path.join(root, "secrets.local.yaml"),
     dumpSecretsLocalYaml(secretMap),
-    "utf8",
+    { encoding: "utf8", mode: 0o600 },
   );
+  await fs.chmod(path.join(root, "secrets.local.yaml"), 0o600).catch(() => undefined);
+  const secretJsonPath = path.join(root, "secrets.local.json");
   await fs.writeFile(
-    path.join(root, "secrets.local.json"),
+    secretJsonPath,
     JSON.stringify(
       { note: "LOCAL ONLY — decrypted for this code-lab run", secrets: secretMap },
       null,
       2,
     ),
-    "utf8",
+    { encoding: "utf8", mode: 0o600 },
   );
+  await fs.chmod(secretJsonPath, 0o600).catch(() => undefined);
   await fs.writeFile(
     path.join(codeDir, "studio_connectors.py"),
     buildStudioConnectorsPy(),
@@ -202,7 +204,7 @@ export async function executeAuthoredCode(input: {
   // Only persist code-lab to Mongo when explicitly requested (Sync/Save), never on Run
   if (input.persistCodeLab && ws) {
     await workspaces().updateOne(
-      { workspaceId: input.workspaceId },
+      { workspaceId },
       {
         $set: {
           "codeLab.pythonSource": input.pythonSource ?? "",
@@ -256,16 +258,12 @@ print("connectors:", [c.get("id") for c in list_connectors()])
   if (result.stderr) await stamp(`STDERR\n${result.stderr}`);
   await stamp(result.code === 0 ? "RUN_OK" : "RUN_FAIL");
 
-  await fs.writeFile(
-    path.join(logsDir, "stdout.log"),
-    result.stdout,
-    "utf8",
-  );
-  await fs.writeFile(
-    path.join(logsDir, "stderr.log"),
-    result.stderr,
-    "utf8",
-  );
+  const stdoutPath = path.join(logsDir, "stdout.log");
+  const stderrPath = path.join(logsDir, "stderr.log");
+  await fs.writeFile(stdoutPath, result.stdout, { encoding: "utf8", mode: 0o600 });
+  await fs.writeFile(stderrPath, result.stderr, { encoding: "utf8", mode: 0o600 });
+  await fs.chmod(stdoutPath, 0o600).catch(() => undefined);
+  await fs.chmod(stderrPath, 0o600).catch(() => undefined);
 
   return {
     runId,

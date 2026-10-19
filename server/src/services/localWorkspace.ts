@@ -16,6 +16,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { config } from "../config.js";
+import { assertSafeIdentifier } from "../security/identifiers.js";
 import { studioLlmDefaults } from "./studioSetup.js";
 import type { RunNodeOutput, WorkspaceDocument } from "../types.js";
 
@@ -90,10 +91,7 @@ export function setLocalWorkspacesRootForTests(dir: string | null): void {
 }
 
 export function assertWorkspaceId(workspaceId: string): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(workspaceId)) {
-    throw Object.assign(new Error("Invalid workspace id"), { statusCode: 400 });
-  }
-  return workspaceId;
+  return assertSafeIdentifier(workspaceId, "workspace id");
 }
 
 export function workspaceDir(workspaceId: string): string {

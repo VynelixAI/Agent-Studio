@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import yaml from "js-yaml";
 import path from "node:path";
 import { config } from "../config.js";
 import { buildDataCleanupNotebook } from "../codegen/notebook.js";
@@ -19,6 +20,7 @@ import {
   dumpTasksYaml,
 } from "../codegen/tasksYaml.js";
 import type { WorkspaceDocument } from "../types.js";
+import { assertSafeFileName, assertSafeIdentifier } from "../security/identifiers.js";
 
 export interface MaterializedRun {
   root: string;
@@ -47,19 +49,30 @@ export async function materializeRun(opts: {
     history?: Array<{ role: string; content: string }>;
   };
 }): Promise<MaterializedRun> {
-  const root = path.join(config.runsRoot, opts.workspaceId, opts.runId);
+  const workspaceId = assertSafeIdentifier(opts.workspaceId, "workspace id");
+  const runId = assertSafeIdentifier(opts.runId, "run id");
+  for (const node of opts.document.flow.nodes) {
+    assertSafeIdentifier(node.id, "node id");
+  }
+  const runsRoot = path.resolve(config.runsRoot);
+  const root = path.resolve(runsRoot, workspaceId, runId);
+  const relativeRoot = path.relative(runsRoot, root);
+  if (!relativeRoot || relativeRoot === ".." || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot)) {
+    throw Object.assign(new Error("Run path escaped the runs root"), { statusCode: 400 });
+  }
   const codeDir = path.join(root, "code");
   const logsDir = path.join(root, "logs");
   const notebooksDir = path.join(root, "notebooks");
   const attachmentsDir = path.join(root, "attachments");
   const stageDir = path.join(codeDir, "stage_cache");
 
-  await fs.mkdir(codeDir, { recursive: true });
-  await fs.mkdir(logsDir, { recursive: true });
-  await fs.mkdir(path.join(logsDir, "nodes"), { recursive: true });
-  await fs.mkdir(notebooksDir, { recursive: true });
-  await fs.mkdir(attachmentsDir, { recursive: true });
-  await fs.mkdir(stageDir, { recursive: true });
+  // Run folders can contain decrypted connector secrets and logs; keep them private.
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  await fs.chmod(root, 0o700).catch(() => undefined);
+  for (const directory of [codeDir, logsDir, path.join(logsDir, "nodes"), notebooksDir, attachmentsDir, stageDir]) {
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    await fs.chmod(directory, 0o700).catch(() => undefined);
+  }
 
   // Fresh run log file for every run
   const mainLog = path.join(logsDir, "run.log");
@@ -86,9 +99,11 @@ export async function materializeRun(opts: {
 
   await fs.writeFile(yamlPath, opts.yaml, "utf8");
   await fs.writeFile(tasksYamlPath, dumpTasksYaml(tasks), "utf8");
-  await fs.writeFile(secretsYamlPath, dumpSecretsLocalYaml(opts.secrets), "utf8");
+  await fs.writeFile(secretsYamlPath, dumpSecretsLocalYaml(opts.secrets), { encoding: "utf8", mode: 0o600 });
+  await fs.chmod(secretsYamlPath, 0o600).catch(() => undefined);
+  const secretsJsonPath = path.join(root, "secrets.local.json");
   await fs.writeFile(
-    path.join(root, "secrets.local.json"),
+    secretsJsonPath,
     JSON.stringify(
       {
         note: "LOCAL ONLY — decrypted secrets for this run. Do not commit.",
@@ -97,8 +112,9 @@ export async function materializeRun(opts: {
       null,
       2,
     ),
-    "utf8",
+    { encoding: "utf8", mode: 0o600 },
   );
+  await fs.chmod(secretsJsonPath, 0o600).catch(() => undefined);
   await fs.writeFile(documentPath, JSON.stringify(opts.document, null, 2), "utf8");
   await fs.writeFile(
     metaPath,
@@ -165,8 +181,9 @@ export async function materializeRun(opts: {
   const nodesDir = path.join(codeDir, "nodes");
   await fs.mkdir(nodesDir, { recursive: true });
   for (const node of opts.document.flow.nodes) {
+    const nodeId = assertSafeIdentifier(node.id, "node id");
     await fs.writeFile(
-      path.join(nodesDir, `${node.id}.py`),
+      path.join(nodesDir, `${nodeId}.py`),
       buildReferenceNodePy(node),
       "utf8",
     );
@@ -198,26 +215,28 @@ If this folder is empty after Run, check \`logs/run.log\` and \`logs/nodes/*.log
   );
   for (const node of opts.document.flow.nodes) {
     if (node.type !== "agent" && node.type !== "llm") continue;
+    const nodeId = assertSafeIdentifier(node.id, "node id");
     const cfg = (node.config ?? {}) as Record<string, unknown>;
     const code = typeof cfg.dynamicCode === "string" ? cfg.dynamicCode : "";
     if (!code.trim()) continue;
     const lang = String(cfg.codeLanguage ?? "python");
     const ext = lang === "javascript" ? "mjs" : "py";
-    await fs.writeFile(path.join(agentsDir, `${node.id}.${ext}`), code, "utf8");
+    await fs.writeFile(path.join(agentsDir, `${nodeId}.${ext}`), code, "utf8");
+    const metadata = {
+      nodeId,
+      type: node.type,
+      agentVendor: cfg.agentVendor ?? "",
+      agentType: cfg.agentType ?? "",
+      executionMode: cfg.executionMode ?? "local",
+      remoteUrl: cfg.remoteUrl ?? "",
+      provider: cfg.provider ?? "",
+      model: cfg.customModel || cfg.model || "",
+      yamlOutputPath: cfg.yamlOutputPath ?? `outputs/${nodeId}.yaml`,
+      package: cfg.agentPackage ?? cfg.langchainPackage ?? "",
+    };
     await fs.writeFile(
-      path.join(agentsDir, `${node.id}.meta.yaml`),
-      [
-        `nodeId: ${node.id}`,
-        `type: ${node.type}`,
-        `agentVendor: ${cfg.agentVendor ?? ""}`,
-        `agentType: ${cfg.agentType ?? ""}`,
-        `executionMode: ${cfg.executionMode ?? "local"}`,
-        `remoteUrl: ${cfg.remoteUrl ?? ""}`,
-        `provider: ${cfg.provider ?? ""}`,
-        `model: ${cfg.customModel || cfg.model || ""}`,
-        `yamlOutputPath: ${cfg.yamlOutputPath ?? `outputs/${node.id}.yaml`}`,
-        `package: ${cfg.agentPackage ?? cfg.langchainPackage ?? ""}`,
-      ].join("\n") + "\n",
+      path.join(agentsDir, `${nodeId}.meta.yaml`),
+      yaml.dump(metadata, { noRefs: true, lineWidth: -1 }),
       "utf8",
     );
   }
@@ -227,6 +246,7 @@ If this folder is empty after Run, check \`logs/run.log\` and \`logs/nodes/*.log
     if (node.type !== "python" && node.type !== "notebook" && node.type !== "code") {
       continue;
     }
+    const nodeId = assertSafeIdentifier(node.id, "node id");
     const cfg = { ...((node.config ?? {}) as Record<string, unknown>) };
     if (
       node.type === "notebook" &&
@@ -255,12 +275,12 @@ If this folder is empty after Run, check \`logs/run.log\` and \`logs/nodes/*.log
     if (!String(src).trim()) continue;
     if (node.type === "notebook") {
       await fs.writeFile(
-        path.join(notebooksDir, `${node.id}.py`),
+        path.join(notebooksDir, `${nodeId}.py`),
         String(src),
         "utf8",
       );
     } else {
-      await fs.writeFile(path.join(codeDir, `${node.id}.py`), String(src), "utf8");
+      await fs.writeFile(path.join(codeDir, `${nodeId}.py`), String(src), "utf8");
     }
   }
 
@@ -312,7 +332,8 @@ jupyter notebook data_cleanup.ipynb
 
   if (opts.attachments?.length) {
     for (const att of opts.attachments) {
-      await fs.copyFile(att.absolutePath, path.join(attachmentsDir, att.name));
+      const attachmentName = assertSafeFileName(att.name, "attachment name");
+      await fs.copyFile(att.absolutePath, path.join(attachmentsDir, attachmentName));
     }
   }
 

@@ -4,6 +4,7 @@ import { encryptSecret } from "../crypto.js";
 import { secrets } from "../db.js";
 import { writeAudit } from "../security/audit.js";
 import { requireRole } from "../security/plugin.js";
+import { assertSafeIdentifier, assertSafeSecretRef } from "../security/identifiers.js";
 import {
   applyWorkspace,
   createWorkspace,
@@ -182,20 +183,26 @@ export async function workspaceRoutes(app: FastifyInstance) {
     "/workspaces/:id/secrets",
     { preHandler: requireRole("write") },
     async (req, reply) => {
-      const ws = await getWorkspace(req.params.id);
+      const workspaceId = assertSafeIdentifier(req.params.id, "workspace id");
+      const secretRef = assertSafeSecretRef(req.body?.secretRef);
+      const secretValue = req.body?.value;
+      if (typeof secretValue !== "string" || secretValue.length > 200_000) {
+        return reply.code(400).send({ error: "Secret value must be a string of at most 200000 characters", code: "INVALID_SECRET_VALUE" });
+      }
+      const ws = await getWorkspace(workspaceId);
       if (!ws) return reply.code(404).send({ error: "Workspace not found" });
       const now = new Date().toISOString();
-      const enc = encryptSecret(req.body.value);
+      const enc = encryptSecret(secretValue);
       await secrets().updateOne(
-        { workspaceId: req.params.id, secretRef: req.body.secretRef },
+        { workspaceId, secretRef },
         {
           $set: {
-            workspaceId: req.params.id,
-            secretRef: req.body.secretRef,
+            workspaceId,
+            secretRef,
             ciphertext: enc.ciphertext,
             iv: enc.iv,
             tag: enc.tag,
-            label: req.body.label,
+            label: req.body?.label,
             updatedAt: now,
           },
           $setOnInsert: { createdAt: now },
@@ -207,13 +214,13 @@ export async function workspaceRoutes(app: FastifyInstance) {
         role: req.principal?.role,
         action: "secret.upsert",
         resourceType: "secret",
-        resourceId: req.params.id,
+        resourceId: workspaceId,
         success: true,
         ip: req.ip,
         userAgent: req.headers["user-agent"],
-        detail: { secretRef: req.body.secretRef },
+        detail: { secretRef },
       });
-      return { ok: true, secretRef: req.body.secretRef };
+      return { ok: true, secretRef };
     },
   );
 

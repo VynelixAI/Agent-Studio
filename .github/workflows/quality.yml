@@ -1,0 +1,131 @@
+name: Agent Studio quality checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python workflow dependencies for tests
+        run: python -m pip install --disable-pip-version-check -r server/sandbox/requirements.txt
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install API dependencies
+        run: npm ci --prefix server
+      # These tools are pinned here because this archive's package lockfiles could not
+      # be regenerated in the offline authoring environment. Promote them to manifests
+      # and lockfiles once a network-enabled dependency update can be reviewed.
+      - name: Install temporary quality tools
+        run: >-
+          npm install --no-save --no-package-lock
+          eslint@10.10.0 @eslint/js@10.10.0 typescript-eslint@8.71.2
+          eslint-plugin-react-hooks@7.1.1 eslint-plugin-react-refresh@0.5.7
+          globals@16.5.0 prettier@3.9.10
+      - name: Type-check and build frontend
+        run: npm run build
+      - name: Lint source and scripts
+        run: npx eslint .
+      - name: Check formatting of touched configuration and documentation
+        run: npx prettier --check .prettierrc.json eslint.config.mjs scripts/check-secrets.mjs
+      - name: Scan working tree for high-confidence secret patterns
+        run: npm run security:scan
+      - name: Validate the node catalog
+        run: npm run validate:catalog
+      - name: Build API
+        run: npm run build --prefix server
+      - name: Run API tests
+        run: npm test --prefix server
+      - name: Run frontend core tests
+        run: >-
+          node --import ./server/node_modules/tsx/dist/loader.mjs --test
+          src/core/productVersions.test.ts src/core/flowReadiness.test.ts
+          src/core/workflowCodegen.test.ts src/core/itemHandoverContract.test.ts
+      - name: Run stage dataset tests
+        run: npm run test:stage-py --prefix server
+      - name: Run offline workflow-domain tests
+        run: npm run test:domains
+      - name: Compile Python test sources
+        run: python -m compileall -q testing server/tests
+      - name: Audit root JavaScript dependencies
+        run: npm audit --audit-level=high
+      - name: Audit API JavaScript dependencies
+        run: npm audit --prefix server --audit-level=high
+      - name: Install Python dependency auditor
+        run: python -m pip install --disable-pip-version-check pip-audit
+      - name: Audit sandbox Python dependencies
+        run: pip-audit -r server/sandbox/requirements.txt
+      - name: Build isolated workflow runner image
+        run: docker build -f server/sandbox/Dockerfile -t agent-studio-runner:ci server/sandbox
+      - name: Smoke test workflow runner image
+        run: >-
+          docker run --rm --network none agent-studio-runner:ci
+          -c "import yaml, pandas, pymongo, boto3, nbconvert, psycopg2, duckdb; print('runner image OK')"
+      - name: Generate third-party license inventories
+        shell: bash
+        run: |
+          mkdir -p license-reports
+          npx --yes license-checker@25.0.1 --production --json > license-reports/root.json
+          npx --yes --prefix server license-checker@25.0.1 --production --json > license-reports/server.json
+      - name: Upload third-party license inventories
+        uses: actions/upload-artifact@v4
+        with:
+          name: third-party-license-inventories
+          path: license-reports/*.json
+          if-no-files-found: error
+
+  secret-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan current files and git history with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+
+  desktop-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install Linux desktop build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libgtk-3-dev libayatana-appindicator3-dev patchelf pkg-config libwebkit2gtk-4.1-dev
+      - name: Install root dependencies
+        run: npm ci
+      - name: Install API dependencies
+        run: npm ci --prefix server
+      - name: Compile Tauri desktop application (without installer bundle)
+        run: npm run tauri -- build --no-bundle

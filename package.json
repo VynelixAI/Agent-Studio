@@ -13,12 +13,14 @@
     "lint": "tsc --noEmit",
     "validate:catalog": "node --import tsx scripts/validateStudioCatalog.ts",
     "test:stage": "npm run test --prefix server && npm run test:stage-py --prefix server",
-    "test:domains:emit": "npx tsx testing/scripts/emit_codegen.ts",
-    "test:domains": "npm run test:domains:emit && python3 testing/run_all.py",
+    "test:domains:emit": "npm run test:domains:emit --prefix server",
+    "test:domains": "npm run test:domains:emit && node scripts/run-python.mjs testing/run_all.py",
     "mongo:up": "docker compose up -d mongo",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "typecheck": "tsc --noEmit",
+    "security:scan": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -43,5 +45,9 @@
     "tailwindcss": "^4.1.7",
     "typescript": "~5.8.3",
     "vite": "^6.3.5"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "npm": ">=10"
   }
 }

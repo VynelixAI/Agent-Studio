@@ -8,8 +8,9 @@
     "dev:watch": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "test": "tsx --test src/codegen/structuredDataset.test.ts src/services/runService.test.ts src/services/chatService.test.ts src/services/localWorkspace.test.ts src/services/studioSetup.test.ts",
-    "test:stage-py": "tsx scripts/emit-stage-dataset.ts && python3 -m unittest tests.test_stage_dataset -v"
+    "test": "tsx --test src/codegen/structuredDataset.test.ts src/services/runService.test.ts src/services/artifactSafety.test.ts src/services/chatService.test.ts src/services/localWorkspace.test.ts src/services/studioSetup.test.ts src/security/identifiers.test.ts src/services/processRunner.test.ts src/config.test.ts",
+    "test:stage-py": "tsx scripts/emit-stage-dataset.ts && node ../scripts/run-python.mjs -m unittest tests.test_stage_dataset -v",
+    "test:domains:emit": "tsx ../testing/scripts/emit_codegen.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
@@ -26,5 +27,9 @@
     "@types/node": "^22.15.21",
     "tsx": "^4.19.4",
     "typescript": "~5.8.3"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "npm": ">=10"
   }
 }

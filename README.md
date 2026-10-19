@@ -57,14 +57,16 @@ Agentic Application (optional)
 npm run mongo:up          # or: docker compose up -d mongo
 
 # 2) API
-cd server && npm install && npm run dev
+cd server && npm ci && npm run dev
 
 # 3) Studio UI (another terminal)
-npm install
+npm ci
 npm run dev
 ```
 
 Open http://localhost:1420 · API http://localhost:8787/health
+
+For local Python execution, create `server/.venv` and install `server/sandbox/requirements.txt`. On Windows PowerShell, run `python -m venv server/.venv`, then `server\.venv\Scripts\python.exe -m pip install -r server\sandbox\requirements.txt`. On Linux/macOS, use `python3 -m venv server/.venv`, then `server/.venv/bin/python -m pip install -r server/sandbox/requirements.txt`.
 
 ### Run on another server / VM
 
@@ -73,19 +75,21 @@ Both processes must be running **on that server**, and MongoDB must be reachable
 ```bash
 # on the server
 npm run mongo:up
-cd server && cp .env.example .env && npm install && npm run dev
+cd server && cp .env.example .env && npm ci && npm run dev
 # other terminal
-npm install && npm run dev
+npm ci && npm run dev
 ```
 
-Then open `http://<server-ip>:1420` from your laptop. The UI auto-targets `http://<server-ip>:8787`.
+For local use, the API binds to `127.0.0.1` by default. To expose the development UI to another machine, configure the API deliberately rather than opening an unauthenticated port:
 
-If you still see **API offline**:
+1. In `server/.env`, set `API_HOST=0.0.0.0`, `NODE_ENV=production`, `AUTH_REQUIRED=true`, and `RUNNER_SANDBOX=docker`.
+2. Build the runner image from the repository root: `docker build -f server/sandbox/Dockerfile -t agent-studio-runner:local server/sandbox`.
+3. Set `SECRETS_KEY` to a unique high-entropy value (for example, generate one with `openssl rand -hex 32`). Store it in a secrets manager; never commit it.
+4. Set `API_KEYS` to one or more generated values in `key:role` format (`admin`, `operator`, or `viewer`). Never commit these values.
+5. Set `CORS_ORIGIN` to the exact trusted UI origin; do not use `*` on a network-exposed API. Keep `RUNNER_DOCKER_NETWORK=none` unless external connectors are required. For connector access, use a restricted Docker network with explicit egress controls. Install required connector drivers in `server/sandbox/requirements.txt` and rebuild the runner image; workflows cannot install packages at runtime.
+6. Set the UI API URL to the server API, provide the API key in the UI, and allow only the required firewall ports. Do not expose the app to untrusted users until tenant-scoped authorization, quotas, and sandbox validation are complete.
 
-1. Confirm API health: `curl http://<server-ip>:8787/health`
-2. In the WS panel, set **API URL** to `http://<server-ip>:8787` and click **Use**
-3. Ensure firewall allows ports **1420** and **8787**
-4. In `server/.env`, set `CORS_ORIGIN=*` (default in `.env.example`)
+If you only need the app on this computer, keep `API_HOST=127.0.0.1`.
 
 ### Apply → MongoDB
 
@@ -208,3 +212,16 @@ src/
 src-tauri/      # Tauri 2 shell — starts API + UI, desktop config YAML
 server/         # Fastify API (Mongo-backed)
 ```
+
+
+## Safe deployment notes
+
+Agent Studio's default API bind address is `127.0.0.1` for local development and desktop use. Do not expose it to a LAN or the internet without `NODE_ENV=production`, `AUTH_REQUIRED=true`, strong `API_KEYS`, a strong persistent `SECRETS_KEY`, exact `CORS_ORIGIN` values, and the Docker workflow runner. A non-loopback bind is rejected unless `RUNNER_SANDBOX=docker` is configured.
+
+Build the standard runner image from the repository root:
+
+```bash
+docker build -f server/sandbox/Dockerfile -t agent-studio-runner:local server/sandbox
+```
+
+The runner defaults to `RUNNER_DOCKER_NETWORK=none`. Workflows requiring external databases or providers need an explicitly configured restricted Docker network with suitable egress rules. Do not use unrestricted network access for untrusted workflows. Docker is defense in depth, not a substitute for host hardening, resource quotas, authorization, and monitoring. See [Recovery and operations](docs/operations/recovery.md) for backup and restore guidance.

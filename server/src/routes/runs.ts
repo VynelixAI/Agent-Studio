@@ -103,6 +103,9 @@ export async function runRoutes(app: FastifyInstance) {
       try {
         const logs = await readRunLogs(req.params.runId);
         const scrub = req.query.scrub !== "0";
+        if (!scrub && req.principal?.role !== "admin") {
+          return reply.code(403).send({ error: "Unscrubbed logs require admin role", code: "ADMIN_REQUIRED" });
+        }
         return {
           runId: logs.runId,
           scrubbed: scrub,
@@ -125,6 +128,9 @@ export async function runRoutes(app: FastifyInstance) {
       try {
         const outs = await readRunOutputs(req.params.runId);
         const scrub = req.query.scrub !== "0";
+        if (!scrub && req.principal?.role !== "admin") {
+          return reply.code(403).send({ error: "Unscrubbed outputs require admin role", code: "ADMIN_REQUIRED" });
+        }
         return {
           runId: outs.runId,
           scrubbed: scrub,

@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { runs, secrets, versions, workspaces } from "../db.js";
 import { encryptSecret } from "../crypto.js";
+import { assertSafeIdentifier, assertSafeSecretRef, assertWorkspaceDocument } from "../security/identifiers.js";
 import type {
   AttachmentMeta,
   WorkspaceDocument,
@@ -44,14 +45,16 @@ export async function listWorkspaces(): Promise<
 export async function getWorkspace(
   workspaceId: string,
 ): Promise<WorkspaceRecord | null> {
-  return workspaces().findOne({ workspaceId }, { projection: { _id: 0 } });
+  const id = assertSafeIdentifier(workspaceId, "workspace id");
+  return workspaces().findOne({ workspaceId: id }, { projection: { _id: 0 } });
 }
 
 export async function listVersions(
   workspaceId: string,
 ): Promise<WorkspaceVersionRecord[]> {
+  const id = assertSafeIdentifier(workspaceId, "workspace id");
   return versions()
-    .find({ workspaceId }, { projection: { _id: 0 } })
+    .find({ workspaceId: id }, { projection: { _id: 0 } })
     .sort({ createdAt: -1 })
     .toArray();
 }
@@ -62,13 +65,17 @@ async function upsertSecrets(
 ) {
   const now = new Date().toISOString();
   for (const s of secretPayloads) {
+    const secretRef = assertSafeSecretRef(s.secretRef);
+    if (typeof s.value !== "string" || s.value.length > 200_000) {
+      throw Object.assign(new Error("Invalid secret value"), { statusCode: 400, code: "INVALID_SECRET_VALUE" });
+    }
     const enc = encryptSecret(s.value);
     await secrets().updateOne(
-      { workspaceId, secretRef: s.secretRef },
+      { workspaceId, secretRef },
       {
         $set: {
           workspaceId,
-          secretRef: s.secretRef,
+          secretRef,
           ciphertext: enc.ciphertext,
           iv: enc.iv,
           tag: enc.tag,
@@ -89,8 +96,9 @@ export async function createWorkspace(input: {
   attachments?: AttachmentMeta[];
   privacy?: WorkspaceRecord["privacy"];
 }): Promise<WorkspaceRecord> {
+  assertWorkspaceDocument(input.document);
   const now = new Date().toISOString();
-  const workspaceId = input.document.workspace.id || `ws_${nanoid(8)}`;
+  const workspaceId = assertSafeIdentifier(input.document.workspace.id || `ws_${nanoid(8)}`, "workspace id");
   const version = input.document.workspace.version || "0.1.0";
 
   const existing = await getWorkspace(workspaceId);
@@ -152,14 +160,16 @@ export async function applyWorkspace(input: {
   note?: string;
   privacy?: WorkspaceRecord["privacy"];
 }): Promise<{ record: WorkspaceRecord; previousVersion: string | null }> {
+  assertWorkspaceDocument(input.document);
+  const workspaceId = assertSafeIdentifier(input.workspaceId, "workspace id");
   const now = new Date().toISOString();
-  const existing = await getWorkspace(input.workspaceId);
+  const existing = await getWorkspace(workspaceId);
 
   if (!existing) {
     const created = await createWorkspace({
       document: {
         ...input.document,
-        workspace: { ...input.document.workspace, id: input.workspaceId },
+        workspace: { ...input.document.workspace, id: workspaceId },
       },
       yaml: input.yaml,
       secrets: input.secrets,
@@ -179,7 +189,7 @@ export async function applyWorkspace(input: {
     ...input.document,
     workspace: {
       ...input.document.workspace,
-      id: input.workspaceId,
+      id: workspaceId,
       version: nextVersion,
       updatedAt: now,
     },
@@ -189,7 +199,7 @@ export async function applyWorkspace(input: {
   const privacy = input.privacy ?? existing.privacy;
 
   await workspaces().updateOne(
-    { workspaceId: input.workspaceId },
+    { workspaceId },
     {
       $set: {
         name: document.workspace.name,
@@ -204,7 +214,7 @@ export async function applyWorkspace(input: {
   );
 
   await versions().insertOne({
-    workspaceId: input.workspaceId,
+    workspaceId,
     version: nextVersion,
     document,
     yaml: input.yaml,
@@ -219,10 +229,10 @@ export async function applyWorkspace(input: {
   });
 
   if (input.secrets?.length) {
-    await upsertSecrets(input.workspaceId, input.secrets);
+    await upsertSecrets(workspaceId, input.secrets);
   }
 
-  const record = (await getWorkspace(input.workspaceId))!;
+  const record = (await getWorkspace(workspaceId))!;
   return { record, previousVersion };
 }
 
@@ -236,6 +246,7 @@ export async function deleteWorkspace(workspaceId: string): Promise<{
     runs: number;
   };
 }> {
+  workspaceId = assertSafeIdentifier(workspaceId, "workspace id");
   const existing = await getWorkspace(workspaceId);
   if (!existing) {
     throw Object.assign(new Error("Workspace not found"), { statusCode: 404 });

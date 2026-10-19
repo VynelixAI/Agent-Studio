@@ -1,51 +1,41 @@
-/**
- * Exhaustive validation of:
- * - Core node registry ↔ schemas ↔ dropdown options
- * - LLM / Agent provider option sources
- * - Plugin catalog ↔ capabilities ↔ node specs ↔ generated schemas
- * - Simulated "create node" with defaultConfig + select defaults
- *
- * Run: node --import tsx scripts/validateStudioCatalog.ts
- */
 
-// Minimal browser stubs for modules that touch localStorage
-const g = globalThis as typeof globalThis & {
-  localStorage?: Storage;
-  window?: unknown;
-};
+import type { NodeFieldDef, NodeSchema } from "../src/core/nodeSchemas.ts";
+
+// Set browser-like globals before loading modules that may read them during import.
+const g = globalThis as typeof globalThis & { localStorage?: Storage };
 if (!g.localStorage) {
   const store = new Map<string, string>();
   g.localStorage = {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
     clear: () => void store.clear(),
-    key: () => null,
-    length: 0,
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() { return store.size; },
   } as Storage;
 }
-if (!g.window) g.window = g;
+if (typeof g.window === "undefined") {
+  Object.defineProperty(g, "window", {
+    value: g,
+    configurable: true,
+    enumerable: true,
+    writable: true,
+  });
+}
 
-import {
-  AGENT_VENDORS,
-  agentTypesForVendor,
-  getAgentVendor,
-} from "../src/core/agentVendors.ts";
-import {
-  defaultConfigForType,
-  getNodeSchema,
-  type NodeFieldDef,
-  type NodeSchema,
-} from "../src/core/nodeSchemas.ts";
-import { CORE_NODE_REGISTRY } from "../src/core/nodeRegistry.ts";
-import {
-  LLM_PROVIDERS,
-  getLlmProvider,
-  modelsForProvider,
-} from "../src/core/llmProviders.ts";
-import { PLUGIN_CATALOG } from "../src/core/pluginCatalog.ts";
-import { PLUGIN_CAPABILITIES } from "../src/core/pluginNodeCatalog.ts";
-import { getPluginDrivenSchema } from "../src/core/pluginNodeSchemas.ts";
+const { AGENT_VENDORS, agentTypesForVendor, getAgentVendor } = await import(
+  "../src/core/agentVendors.ts"
+);
+const { defaultConfigForType, getNodeSchema } = await import(
+  "../src/core/nodeSchemas.ts"
+);
+const { CORE_NODE_REGISTRY } = await import("../src/core/nodeRegistry.ts");
+const { LLM_PROVIDERS, getLlmProvider, modelsForProvider } = await import(
+  "../src/core/llmProviders.ts"
+);
+const { PLUGIN_CATALOG } = await import("../src/core/pluginCatalog.ts");
+const { PLUGIN_CAPABILITIES } = await import("../src/core/pluginNodeCatalog.ts");
+const { getPluginDrivenSchema } = await import("../src/core/pluginNodeSchemas.ts");
 
 type Issue = { severity: "error" | "warn"; area: string; message: string };
 
@@ -140,7 +130,7 @@ function validateSchemaFields(
     }
 
     if (field.visibleWhen) {
-      const ref = schema.fields.find((f) => f.key === field.visibleWhen!.key);
+      const ref = schema.fields.find((f: NodeFieldDef) => f.key === field.visibleWhen!.key);
       if (!ref && !sampleConfig.hasOwnProperty(field.visibleWhen.key)) {
         // referenced key might only live in defaultConfig
         if (schema.defaultConfig?.[field.visibleWhen.key] === undefined) {
@@ -223,7 +213,7 @@ for (const type of coreTypes) {
   if (type === "llm") {
     for (const p of LLM_PROVIDERS) {
       const cfg = { ...created.config, provider: p.id, model: p.models[0]?.id };
-      const modelField = schema.fields.find((f) => f.key === "model");
+      const modelField = schema.fields.find((f: NodeFieldDef) => f.key === "model");
       if (modelField) {
         const opts = resolveOptions(modelField, cfg);
         if (!opts.length) err("core:llm", `No models for provider ${p.id}`);
@@ -232,7 +222,7 @@ for (const type of coreTypes) {
         } else ok("core:llm", `provider ${p.id} models ok`);
       }
       // language dropdown
-      const lang = schema.fields.find((f) => f.key === "codeLanguage");
+      const lang = schema.fields.find((f: NodeFieldDef) => f.key === "codeLanguage");
       if (lang) {
         const opts = resolveOptions(lang, { ...cfg, enableDynamicCode: true });
         if (opts.length < 2) err("core:llm", "codeLanguage needs python+javascript");
@@ -249,7 +239,7 @@ for (const type of coreTypes) {
         agentVendor: v.id,
         agentType: v.agentTypes[0]?.id,
       };
-      const typeField = schema.fields.find((f) => f.key === "agentType");
+      const typeField = schema.fields.find((f: NodeFieldDef) => f.key === "agentType");
       if (typeField) {
         const opts = resolveOptions(typeField, cfg);
         if (!opts.length) err("core:agent", `No types for vendor ${v.id}`);
@@ -275,7 +265,7 @@ for (const type of ["llm", "agent", "notify.email", "mongodb.read"]) {
 {
   const mongo = getNodeSchema("mongodb.read");
   if (mongo) {
-    const limitField = mongo.fields.find((f) => f.key === "limit");
+    const limitField = mongo.fields.find((f: NodeFieldDef) => f.key === "limit");
     if (limitField?.defaultValue === 100) {
       err(
         "schema",
@@ -291,12 +281,12 @@ for (const type of ["llm", "agent", "notify.email", "mongodb.read"]) {
     ) {
       err("schema", "mongodb.read defaultConfig must omit limit");
     }
-    if (!mongo.fields.some((f) => f.key === "mode")) {
+    if (!mongo.fields.some((f: NodeFieldDef) => f.key === "mode")) {
       err("schema", "mongodb.read missing query mode field");
     } else {
       ok("schema", "mongodb.read has query mode");
     }
-    if (!mongo.fields.some((f) => f.key === "filter" || f.key === "projection")) {
+    if (!mongo.fields.some((f: NodeFieldDef) => f.key === "filter" || f.key === "projection")) {
       err("schema", "mongodb.read missing filter/projection");
     } else {
       ok("schema", "mongodb.read filter + projection present");
@@ -317,13 +307,13 @@ for (const type of ["llm", "agent", "notify.email", "mongodb.read"]) {
       err("schema", `missing plugin schema for ${type}`);
       continue;
     }
-    const lim = s.fields.find((f) => f.key === "limit");
+    const lim = s.fields.find((f: NodeFieldDef) => f.key === "limit");
     if (lim?.defaultValue != null) {
       err("schema", `${type} must not set a default limit (read-all)`);
     } else {
       ok("schema", `${type} optional limit`);
     }
-    if (!s.fields.some((f) => f.key === "filter") || !s.fields.some((f) => f.key === "projection")) {
+    if (!s.fields.some((f: NodeFieldDef) => f.key === "filter") || !s.fields.some((f: NodeFieldDef) => f.key === "projection")) {
       err("schema", `${type} missing filter/projection`);
     } else {
       ok("schema", `${type} filter + projection`);

@@ -26,7 +26,7 @@ cd VynelixAI_AgentStudio
 
 From the project root, run:
 
-npm install
+npm ci
 
 ### 3. Configure the Backend
 
@@ -46,7 +46,7 @@ Copy-Item .env.example .env
 
 Install backend dependencies:
 
-npm install
+npm ci
 
 ### 4. Start MongoDB
 
@@ -109,21 +109,46 @@ Before submitting a Pull Request:
 
 Before opening a Pull Request, run the relevant tests.
 
+Install dependencies from the committed lockfiles:
+
+```bash
+npm ci
+npm ci --prefix server
+```
+
 Run TypeScript validation:
 
-npm run lint
+```bash
+npm run typecheck
+```
 
 Build the project:
 
+```bash
 npm run build
+npm run build --prefix server
+```
 
-Run backend and stage tests:
+Run the working-tree secret scan:
 
+```bash
+npm run security:scan
+```
+
+Run API tests and stage tests:
+
+```bash
+npm test --prefix server
 npm run test:stage
+```
 
 Run domain tests:
 
+```bash
 npm run test:domains
+```
+
+ESLint, Prettier, dependency audits, Python dependency auditing, secret-history scanning, and cross-platform Tauri compile checks run in GitHub Actions. Review the workflow results before merging; local `npm run lint` remains the existing TypeScript check until the lint packages are consolidated into the committed lockfiles.
 
 ## Commit Guidelines
 

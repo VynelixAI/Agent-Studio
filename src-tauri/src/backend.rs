@@ -85,7 +85,12 @@ pub fn start_backend(app: &AppHandle, cfg: &DesktopConfig, cfg_path: &Path) -> R
         ("MONGODB_DB".into(), cfg.database.name.clone()),
         ("RUNS_ROOT".into(), runs.to_string_lossy().into()),
         ("PLUGINS_ROOT".into(), plugins.to_string_lossy().into()),
-        ("CORS_ORIGIN".into(), "*".into()),
+        // The desktop API is a local sidecar; do not expose it to the LAN.
+        ("API_HOST".into(), "127.0.0.1".into()),
+        ("AGENT_STUDIO_DESKTOP".into(), "true".into()),
+        ("AUTH_REQUIRED".into(), "false".into()),
+        ("API_KEYS".into(), "".into()),
+        ("CORS_ORIGIN".into(), "http://localhost:1420,http://127.0.0.1:1420,tauri://localhost,http://tauri.localhost,https://tauri.localhost".into()),
         ("NODE_ENV".into(), "production".into()),
     ];
 

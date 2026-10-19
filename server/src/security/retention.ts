@@ -23,15 +23,25 @@ export async function purgeExpired(): Promise<{
     .toArray();
 
   let runDirsRemoved = 0;
+  const runsRoot = path.resolve(config.runsRoot);
+  let canonicalRunsRoot: string | undefined;
+  try { canonicalRunsRoot = await fs.realpath(runsRoot); } catch { /* absent root is okay */ }
   for (const run of oldRuns) {
     try {
-      await fs.rm(run.localPath, { recursive: true, force: true });
+      if (!canonicalRunsRoot || typeof run.localPath !== "string" || !path.isAbsolute(run.localPath)) continue;
+      const target = path.resolve(run.localPath);
+      const relative = path.relative(runsRoot, target);
+      if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) continue;
+      const stat = await fs.lstat(target);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) continue;
+      const canonicalTarget = await fs.realpath(target);
+      const canonicalRelative = path.relative(canonicalRunsRoot, canonicalTarget);
+      if (!canonicalRelative || canonicalRelative === ".." || canonicalRelative.startsWith(`..${path.sep}`) || path.isAbsolute(canonicalRelative)) continue;
+      await fs.rm(canonicalTarget, { recursive: true, force: true });
       runDirsRemoved += 1;
     } catch {
-      /* ignore */
+      /* Ignore missing/unsafe paths; retention must never delete outside runsRoot. */
     }
-    // Also try parent cleanup is unnecessary
-    void path;
   }
 
   const runRes = await runs().deleteMany({ startedAt: { $lt: runCut } });

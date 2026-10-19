@@ -44,7 +44,7 @@ Live machine-readable matrix: `GET /security/policy`
 # server/.env
 NODE_ENV=production
 AUTH_REQUIRED=true
-API_KEYS=as_your_admin_key:admin,as_ops_key:operator,as_view_key:viewer
+API_KEYS=<32+-character-random-key>:admin,<another-32+-character-random-key>:operator
 SECRETS_KEY=<random-64-char-string>
 DATA_RESIDENCY=IN   # or US
 AUDIT_RETENTION_DAYS=365
@@ -70,3 +70,13 @@ Place TLS termination (HTTPS) at reverse proxy / Tauri secure context. Prefer Mo
 - Full FedRAMP / HIPAA unless separately scoped  
 
 For enterprise attestation, engage VynelixAI security + counsel to map these controls to your policies.
+
+## Workflow execution and remote deployments
+
+Local loopback development uses the host Python interpreter only for trusted local workflows. A non-loopback API bind requires `RUNNER_SANDBOX=docker`, a built runner image, authentication keys, a strong persistent `SECRETS_KEY`, and an exact CORS allow-list. The Docker runner uses no network by default, drops Linux capabilities, prevents privilege escalation, mounts a read-only container root, and enforces configured CPU/memory/process limits. Connector network access should be provided only through an egress-restricted network. The active run directory includes that run's decrypted secrets, so all workflows and plugins remain code-trust boundaries.
+
+Static API keys currently provide role-based access but do not create a per-user tenant model. Before offering the service as a public multi-tenant hosted product, add tenant-scoped workspace/run authorization, per-tenant quotas, stronger credential lifecycle controls, audited secret rotation, and a tested restore drill. Do not represent this repository as certified or safe for arbitrary untrusted workloads merely because Docker execution is enabled.
+
+## Secret scanning
+
+`npm run security:scan` scans the current working tree for high-confidence secret patterns. The GitHub Actions `secret-history` job uses Gitleaks with repository history enabled. These checks are indicators, not a guarantee that every credential type is detectable; any exposed credential must be revoked/rotated.

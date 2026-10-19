@@ -1,0 +1,9 @@
+node_modules/
+server/node_modules/
+dist/
+dist-ssr/
+src-tauri/target/
+coverage/
+package-lock.json
+server/package-lock.json
+testing/_generated/
